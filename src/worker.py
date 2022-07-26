@@ -25,10 +25,16 @@ class Worker:
         print('🟢 > Event processing has been started', body)
         msg: BaseMessage = BaseMessage(**body)
 
-        self.methods.get(msg.method).function(msg)
+        if self.methods.get(msg.method) is None:
+            raise Exception(f'Отсутствует определение метода {msg.method}')
+
+        self.methods[msg.method].function(msg)
         if not (msg.previous is None):
-            trace: Trace = msg.previous[-1]
-            prev_msg: BaseMessage = BaseMessage(previous=msg.previous[:-1], service=trace.service, method=trace.method,
+            trace: Trace = msg.previous.pop()
+            if {trace.service, trace.method} == {msg.service, msg.method}:
+                raise Exception(f'Пытаемся уйти в петлю: {trace.json()}')
+
+            prev_msg: BaseMessage = BaseMessage(previous=msg.previous, service=trace.service, method=trace.method,
                                                 ctx=msg.ctx)
             ask(prev_msg, trace.service, trace.method)
 
@@ -52,3 +58,7 @@ def ask(msg: BaseMessage, service: str, method: str):
                       previous=msg.previous + [Trace(service=msg.service, method=msg.method)],
                       ctx=msg.ctx)
     put(msg.dict(), msg.service)
+
+
+def abort(msg: BaseMessage):
+    msg.previous = []
